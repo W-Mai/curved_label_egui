@@ -219,14 +219,14 @@ fn find_t_for_arc_length(
     total_len: f64,
     mut current_t: f64,
     delta_t: f64,
-    P0: (f64, f64),
-    P1: (f64, f64),
-    P2: (f64, f64),
-    P3: (f64, f64),
+    p0: (f64, f64),
+    p1: (f64, f64),
+    p2: (f64, f64),
+    p3: (f64, f64),
 ) -> f64 {
     while current_len < total_len {
         current_t += delta_t;
-        let b_prime_t = compute_bezier3_derivative(current_t, P0, P1, P2, P3);
+        let b_prime_t = compute_bezier3_derivative(current_t, p0, p1, p2, p3);
         let delta_len = calculate_delta_arc_length(delta_t, b_prime_t.0, b_prime_t.1);
         current_len += delta_len;
     }
@@ -235,13 +235,13 @@ fn find_t_for_arc_length(
 
 fn compute_features(
     t: f64,
-    P0: (f64, f64),
-    P1: (f64, f64),
-    P2: (f64, f64),
-    P3: (f64, f64),
+    p0: (f64, f64),
+    p1: (f64, f64),
+    p2: (f64, f64),
+    p3: (f64, f64),
 ) -> ((f64, f64), (f64, f64), f64) {
-    let b_t = compute_bezier3_point(t, P0, P1, P2, P3);
-    let b_prime_t = compute_bezier3_derivative(t, P0, P1, P2, P3);
+    let b_t = compute_bezier3_point(t, p0, p1, p2, p3);
+    let b_prime_t = compute_bezier3_derivative(t, p0, p1, p2, p3);
     let angle = f64::atan2(b_prime_t.1, b_prime_t.0);
     (b_t, b_prime_t, angle)
 }

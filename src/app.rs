@@ -1,7 +1,6 @@
 use eframe::emath::{pos2, Rect, Rot2};
 use eframe::epaint::{Color32, Rounding, Shape, Stroke};
-use egui::epaint::CubicBezierShape;
-use egui::{emath, Frame, Id, ImageOptions, Pos2, Sense, Ui, Vec2};
+use egui::{emath, Frame, Id, ImageOptions, Pos2, Sense, Ui, Vec2, Widget};
 use egui_plot::{LineStyle, PlotBounds, PlotGeometry, PlotPoint, PlotTransform};
 use std::ops::RangeInclusive;
 
@@ -9,6 +8,9 @@ use std::ops::RangeInclusive;
 #[serde(default)]
 pub struct MainApp {
     label: String,
+    offset: f64,
+    space: f64,
+    height: f64,
 
     control_points: [Pos2; 4],
 
@@ -24,6 +26,9 @@ impl Default for MainApp {
     fn default() -> Self {
         Self {
             label: "Hello World!".to_owned(),
+            offset: 0.0,
+            space: 10.0,
+            height: 10.0,
             control_points: [
                 pos2(50.0, 50.0),
                 pos2(60.0, 250.0),
@@ -213,6 +218,7 @@ fn calculate_delta_arc_length(d_t: f64, d_x: f64, d_y: f64) -> f64 {
     (d_x.powi(2) + d_y.powi(2)).sqrt() * d_t
 }
 
+#[allow(clippy::too_many_arguments)]
 fn find_t_for_arc_length(
     mut current_len: f64,
     total_len: f64,
@@ -272,6 +278,10 @@ impl eframe::App for MainApp {
         egui::SidePanel::left("Left Panel")
             .resizable(true)
             .show(ctx, |ui| {
+                ui.add(egui::Slider::new(&mut self.offset, 0.0..=1000.0).text("Offset"));
+                ui.add(egui::Slider::new(&mut self.space, 1.0..=100.0).text("Space"));
+                ui.add(egui::Slider::new(&mut self.height, 1.0..=100.0).text("Height"));
+
                 ui.text_edit_singleline(&mut self.label);
             });
 
@@ -325,20 +335,24 @@ impl MainApp {
             })
             .collect();
 
-        let points_in_screen: Vec<Pos2> =
-            self.control_points.iter().map(|p| to_screen * *p).collect();
+        // let points_in_screen: Vec<Pos2> =
+        //     self.control_points.iter().map(|p| to_screen * *p).collect();
 
-        let points = points_in_screen.clone().try_into().unwrap();
-        let shape = CubicBezierShape::from_points_stroke(points, true, self.fill, self.stroke);
+        // let points = points_in_screen.clone().try_into().unwrap();
+        // let shape = CubicBezierShape::from_points_stroke(points, true, self.fill, self.stroke);
         // painter.add(shape);
         // painter.add(PathShape::line(points_in_screen, self.aux_stroke));
         painter.extend(control_point_shapes);
 
-        let s_i = 10.0;
-        let mut t_values = vec![0.0];
+        let s_i = self.space;
+        let mut t_values = if self.offset != 0.0 {
+            vec![]
+        } else {
+            vec![0.0]
+        };
         let mut t = 0.0;
         let mut total_len = 0.0;
-        while t < 1.0 {
+        loop {
             t = find_t_for_arc_length(
                 total_len,
                 total_len + s_i,
@@ -361,7 +375,17 @@ impl MainApp {
                     self.control_points[3].y as f64,
                 ),
             );
+
+            if t > 1.0 {
+                break;
+            }
+
             total_len += s_i;
+
+            if total_len < self.offset {
+                continue;
+            }
+
             t_values.push(t);
         }
 
@@ -392,7 +416,10 @@ impl MainApp {
                 vec![
                     start_point,
                     start_point
-                        + Vec2::new((10.0 * angle.sin()) as f32, -(10.0 * angle.cos()) as f32),
+                        + Vec2::new(
+                            (self.height * angle.sin()) as f32,
+                            -(self.height * angle.cos()) as f32,
+                        ),
                 ],
                 self.stroke,
             ));

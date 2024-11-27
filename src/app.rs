@@ -329,9 +329,68 @@ impl MainApp {
 
         let points = points_in_screen.clone().try_into().unwrap();
         let shape = CubicBezierShape::from_points_stroke(points, true, self.fill, self.stroke);
-        painter.add(shape);
-        painter.add(PathShape::line(points_in_screen, self.aux_stroke));
+        // painter.add(shape);
+        // painter.add(PathShape::line(points_in_screen, self.aux_stroke));
         painter.extend(control_point_shapes);
+
+        let s_i = 10.0;
+        let mut t_values = vec![0.0];
+        let mut t = 0.0;
+        let mut total_len = 0.0;
+        while t < 1.0 {
+            t = find_t_for_arc_length(
+                total_len,
+                total_len + s_i,
+                t,
+                0.001,
+                (
+                    self.control_points[0].x as f64,
+                    self.control_points[0].y as f64,
+                ),
+                (
+                    self.control_points[1].x as f64,
+                    self.control_points[1].y as f64,
+                ),
+                (
+                    self.control_points[2].x as f64,
+                    self.control_points[2].y as f64,
+                ),
+                (
+                    self.control_points[3].x as f64,
+                    self.control_points[3].y as f64,
+                ),
+            );
+            total_len += s_i;
+            t_values.push(t);
+        }
+
+        for t_value in t_values.iter() {
+            let (_b_t, _b_prime_t, angle) = compute_features(
+                *t_value,
+                (
+                    self.control_points[0].x as f64,
+                    self.control_points[0].y as f64,
+                ),
+                (
+                    self.control_points[1].x as f64,
+                    self.control_points[1].y as f64,
+                ),
+                (
+                    self.control_points[2].x as f64,
+                    self.control_points[2].y as f64,
+                ),
+                (
+                    self.control_points[3].x as f64,
+                    self.control_points[3].y as f64,
+                ),
+            );
+
+            painter.add(Shape::circle_stroke(
+                to_screen.transform_pos(Pos2::from([_b_t.0 as f32, _b_t.1 as f32])),
+                1.0,
+                self.stroke,
+            ));
+        }
 
         response
     }

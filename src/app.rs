@@ -1,30 +1,39 @@
 use eframe::emath::{pos2, Rect, Rot2};
 use eframe::epaint::{Color32, Rounding, Shape, Stroke};
 use egui::emath::TSTransform;
-use egui::{Id, ImageOptions, Ui, Vec2, Widget};
+use egui::epaint::{CubicBezierShape, PathShape, TextShape};
+use egui::{emath, epaint, Frame, Grid, Id, ImageOptions, Pos2, Sense, Ui, Vec2, Widget};
 use egui_plot::{HLine, LineStyle, PlotBounds, PlotGeometry, PlotPoint, PlotTransform};
 use std::ops::RangeInclusive;
-use egui::epaint::TextShape;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct MainApp {
     label: String,
 
-    p0: egui::Pos2,
-    p1: egui::Pos2,
-    p2: egui::Pos2,
-    p3: egui::Pos2,
+    control_points: [Pos2; 4],
+
+    #[serde[skip]]
+    aux_stroke: Stroke,
+    #[serde[skip]]
+    fill: Color32,
+    #[serde[skip]]
+    stroke: Stroke,
 }
 
 impl Default for MainApp {
     fn default() -> Self {
         Self {
             label: "Hello World!".to_owned(),
-            p0: Default::default(),
-            p1: Default::default(),
-            p2: Default::default(),
-            p3: Default::default(),
+            control_points: [
+                pos2(50.0, 50.0),
+                pos2(60.0, 250.0),
+                pos2(200.0, 200.0),
+                pos2(250.0, 50.0),
+            ],
+            aux_stroke: Stroke::new(1.0, Color32::RED.linear_multiply(0.25)),
+            fill: Color32::from_rgb(50, 100, 150).linear_multiply(0.25),
+            stroke: Stroke::new(1.0, Color32::from_rgb(25, 200, 100)),
         }
     }
 }
@@ -126,8 +135,6 @@ impl egui_plot::PlotItem for PlotShape {
             },
             &(self.shape.texture_id(), screen_rect.size()).into(),
         );
-
-        // shapes.append(&mut Vec::from([shape]));
     }
 
     fn initialize(&mut self, _x_range: RangeInclusive<f64>) {}
@@ -169,6 +176,76 @@ impl egui_plot::PlotItem for PlotShape {
     }
 }
 
+fn compute_bezier3_point(
+    t: f64,
+    p0: (f64, f64),
+    p1: (f64, f64),
+    p2: (f64, f64),
+    p3: (f64, f64),
+) -> (f64, f64) {
+    let x = (1.0 - t).powi(3) * p0.0
+        + 3.0 * (1.0 - t).powi(2) * t * p1.0
+        + 3.0 * (1.0 - t) * t.powi(2) * p2.0
+        + t.powi(3) * p3.0;
+    let y = (1.0 - t).powi(3) * p0.1
+        + 3.0 * (1.0 - t).powi(2) * t * p1.1
+        + 3.0 * (1.0 - t) * t.powi(2) * p2.1
+        + t.powi(3) * p3.1;
+    (x, y)
+}
+
+fn compute_bezier3_derivative(
+    t: f64,
+    p0: (f64, f64),
+    p1: (f64, f64),
+    p2: (f64, f64),
+    p3: (f64, f64),
+) -> (f64, f64) {
+    let x = 3.0 * (1.0 - t).powi(2) * (p1.0 - p0.0)
+        + 6.0 * (1.0 - t) * t * (p2.0 - p1.0)
+        + 3.0 * t.powi(2) * (p3.0 - p2.0);
+    let y = 3.0 * (1.0 - t).powi(2) * (p1.1 - p0.1)
+        + 6.0 * (1.0 - t) * t * (p2.1 - p1.1)
+        + 3.0 * t.powi(2) * (p3.1 - p2.1);
+    (x, y)
+}
+
+fn calculate_delta_arc_length(d_t: f64, d_x: f64, d_y: f64) -> f64 {
+    (d_x.powi(2) + d_y.powi(2)).sqrt() * d_t
+}
+
+fn find_t_for_arc_length(
+    mut current_len: f64,
+    total_len: f64,
+    mut current_t: f64,
+    delta_t: f64,
+    P0: (f64, f64),
+    P1: (f64, f64),
+    P2: (f64, f64),
+    P3: (f64, f64),
+) -> f64 {
+    while current_len < total_len {
+        current_t += delta_t;
+        let b_prime_t = compute_bezier3_derivative(current_t, P0, P1, P2, P3);
+        let delta_len = calculate_delta_arc_length(delta_t, b_prime_t.0, b_prime_t.1);
+        current_len += delta_len;
+    }
+    current_t
+}
+
+fn compute_features(
+    t: f64,
+    P0: (f64, f64),
+    P1: (f64, f64),
+    P2: (f64, f64),
+    P3: (f64, f64),
+) -> ((f64, f64), (f64, f64), f64) {
+    let b_t = compute_bezier3_point(t, P0, P1, P2, P3);
+    let b_prime_t = compute_bezier3_derivative(t, P0, P1, P2, P3);
+    let angle = f64::atan2(b_prime_t.1, b_prime_t.0);
+    (b_t, b_prime_t, angle)
+}
+
 impl MainApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -196,72 +273,66 @@ impl eframe::App for MainApp {
         egui::SidePanel::left("Left Panel")
             .resizable(true)
             .show(ctx, |ui| {
-                ui.heading("Bézier");
-
-                ui.label("p0");
-                egui::DragValue::new(&mut self.p0.x).ui(ui);
-                egui::DragValue::new(&mut self.p0.y).ui(ui);
-
-                ui.label("p1");
-                egui::DragValue::new(&mut self.p1.x).ui(ui);
-                egui::DragValue::new(&mut self.p1.y).ui(ui);
-
-                ui.label("p2");
-                egui::DragValue::new(&mut self.p2.x).ui(ui);
-                egui::DragValue::new(&mut self.p2.y).ui(ui);
-
-                ui.label("p3");
-                egui::DragValue::new(&mut self.p3.x).ui(ui);
-                egui::DragValue::new(&mut self.p3.y).ui(ui);
-
-                ui.separator();
-
                 ui.text_edit_singleline(&mut self.label);
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                let plot = egui_plot::Plot::new("plot").data_aspect(1.0);
-                plot.show(ui, |plot_ui| {
-                    let plot_bounds = plot_ui.plot_bounds();
-                    let plot_size = plot_ui.response().rect;
-                    let scale = 1.0 / (plot_bounds.width() as f32 / plot_size.width());
-
-                   
-                    let mut shape = ctx.fonts(|f| {
-                        egui::Shape::text(
-                            f,
-                            self.p0,
-                            egui::Align2::CENTER_CENTER,
-                            self.label.clone(),
-                            Default::default(),
-                            egui::Color32::RED,
-                        )
-                    });
-
-                    plot_ui.add(PlotShape::new(egui::Shape::rect_filled(
-                        egui::Rect::from([self.p0, self.p1]),
-                        0.0,
-                        egui::Color32::RED,
-                    )));
-
-                    plot_ui.add(PlotShape::new(shape));
-
-                    // plot_ui.bar_chart(egui_plot::BarChart::new(Vec::from([egui_plot::Bar::new(
-                    //     1.0, 1.0,
-                    // )])));
-                    // plot_ui.text(egui_plot::Text::new(
-                    //     egui_plot::PlotPoint::new(self.p0[0], self.p0[1]),
-                    //     egui::RichText::new(self.label.clone()).size(1.0 * scale),
-                    // ));
-                });
-
-                egui::warn_if_debug_build(ui);
+            Frame::canvas(ui.style()).show(ui, |ui| {
+                self.ui_content(ui);
             });
+
+            egui::warn_if_debug_build(ui);
         });
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
+    }
+}
+
+impl MainApp {
+    pub fn ui_content(&mut self, ui: &mut Ui) -> egui::Response {
+        let (response, painter) =
+            ui.allocate_painter(Vec2::new(ui.available_width(), 300.0), Sense::hover());
+
+        let to_screen = emath::RectTransform::from_to(
+            Rect::from_min_size(Pos2::ZERO, response.rect.size()),
+            response.rect,
+        );
+
+        let control_point_radius = 8.0;
+
+        let control_point_shapes: Vec<Shape> = self
+            .control_points
+            .iter_mut()
+            .enumerate()
+            .map(|(i, point)| {
+                let size = Vec2::splat(2.0 * control_point_radius);
+
+                let point_in_screen = to_screen.transform_pos(*point);
+                let point_rect = Rect::from_center_size(point_in_screen, size);
+                let point_id = response.id.with(i);
+                let point_response = ui.interact(point_rect, point_id, Sense::drag());
+
+                *point += point_response.drag_delta();
+                *point = to_screen.from().clamp(*point);
+
+                let point_in_screen = to_screen.transform_pos(*point);
+                let stroke = ui.style().interact(&point_response).fg_stroke;
+
+                Shape::circle_stroke(point_in_screen, control_point_radius, stroke)
+            })
+            .collect();
+
+        let points_in_screen: Vec<Pos2> =
+            self.control_points.iter().map(|p| to_screen * *p).collect();
+
+        let points = points_in_screen.clone().try_into().unwrap();
+        let shape = CubicBezierShape::from_points_stroke(points, true, self.fill, self.stroke);
+        painter.add(shape);
+        painter.add(PathShape::line(points_in_screen, self.aux_stroke));
+        painter.extend(control_point_shapes);
+
+        response
     }
 }

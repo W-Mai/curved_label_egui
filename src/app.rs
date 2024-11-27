@@ -1,9 +1,8 @@
 use eframe::emath::{pos2, Rect, Rot2};
 use eframe::epaint::{Color32, Rounding, Shape, Stroke};
-use egui::emath::TSTransform;
-use egui::epaint::{CubicBezierShape, PathShape, TextShape};
-use egui::{emath, epaint, Frame, Grid, Id, ImageOptions, Pos2, Sense, Ui, Vec2, Widget};
-use egui_plot::{HLine, LineStyle, PlotBounds, PlotGeometry, PlotPoint, PlotTransform};
+use egui::epaint::CubicBezierShape;
+use egui::{emath, Frame, Id, ImageOptions, Pos2, Sense, Ui, Vec2};
+use egui_plot::{LineStyle, PlotBounds, PlotGeometry, PlotPoint, PlotTransform};
 use std::ops::RangeInclusive;
 
 #[derive(serde::Deserialize, serde::Serialize)]

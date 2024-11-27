@@ -292,8 +292,10 @@ impl eframe::App for MainApp {
 
 impl MainApp {
     pub fn ui_content(&mut self, ui: &mut Ui) -> egui::Response {
-        let (response, painter) =
-            ui.allocate_painter(Vec2::new(ui.available_width(), 300.0), Sense::hover());
+        let (response, painter) = ui.allocate_painter(
+            Vec2::new(ui.available_width(), ui.ctx().available_rect().height()),
+            Sense::hover(),
+        );
 
         let to_screen = emath::RectTransform::from_to(
             Rect::from_min_size(Pos2::ZERO, response.rect.size()),
@@ -385,9 +387,14 @@ impl MainApp {
                 ),
             );
 
-            painter.add(Shape::circle_stroke(
-                to_screen.transform_pos(Pos2::from([_b_t.0 as f32, _b_t.1 as f32])),
-                1.0,
+            let start_point = to_screen.transform_pos(Pos2::from([_b_t.0 as f32, _b_t.1 as f32]));
+            painter.add(Shape::circle_stroke(start_point, 1.0, self.stroke));
+            painter.add(Shape::line(
+                vec![
+                    start_point,
+                    start_point
+                        + Vec2::new((10.0 * angle.sin()) as f32, -(10.0 * angle.cos()) as f32),
+                ],
                 self.stroke,
             ));
         }
